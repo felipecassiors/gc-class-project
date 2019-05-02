@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <iostream>
 
-using namespace std;
+using namespace aurora;
 
 class Shape
 {
