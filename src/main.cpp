@@ -1,49 +1,33 @@
-#include<iostream>
-#include<Vector.cpp>
+#include <aurora/Math.h>
+#include <aurora/Vector.h>
+#include <aurora/Color.h>
+
+#include <vector>
+#include <cmath>
+#include <algorithm>
+#include <iostream>
 
 using namespace std;
 
 class Shape
 {
-	Intersection* intersection;	
-	intersection = new Intersection();
+	
 	 
 	public:
-		
+		Intersection* intersection;	
+		intersection = new Intersection();
 		BSDF* bsdf;
 		bsdf = new BSDF();
 		Shape(){
 		}
-		Shape::Shape(BSDF bsdf){
+		Shape(BSDF * bsdf){
 			this->bsdf = bsdf;
 		}
-		Intersection Intersects(Ray ray){
-			
-			
-			intersection.hit = false;
-			intersection.distance = Infinity;
-			intersection.object = null;
-			for object in scene{
-				Intersection temp = object.intersects(ray);
-				
-				if (temp.hit && temp.distance < intersection.distance){
-				
-					intersection = temp;
-					intersection.object = object;
-				}
-			}
-		return intersection;	
-
-			
-		}
-		float calculateShaderGlobals(Ray ray, Intersection intersection ){
-			
-			
-		}
-		float surfaceArea{
-			
-			
-		}
+		virtual bool intersects(const Ray & ray, Intersection & intersection) = 0;
+		virtual void calculateShaderGlobals(
+				const Ray & ray, const Intersection & intersection,
+				ShaderGlobals & shaderGlobals) = 0;
+		virtual float surfaceArea() = 0;
 		
 			
 };
@@ -56,13 +40,13 @@ class BSDF{
 		Color3 color;
 		BSDF(){
 		}
-		BSDF::BSDF(BSDFType type, Color3 color){
+		BSDF(BSDFType type, Color3 color){
 			this->type = type;
 			this->color = color;
 		}
 };
 
-class BSDFType{
+enum BSDFType{
 	
 	public:
 		int Light = 0;
@@ -79,8 +63,11 @@ class Intersection{
 		float distance;
 		int index;
 		Intersection(){
+			hit = false;
+			distance = AURORA_INFINITY;
+			index = -1;
 		}
-		Intersection::Intersection(bool hit, float distance, int index){
+		Intersection(bool hit, float distance, int index){
 			this->hit = hit;
 			this->distance = distance;
 			this->index = index;
@@ -90,8 +77,12 @@ class Intersection{
 
 class Scene{
 	
-	Shape* shape;
-	shape = new Shape();
+	std::vector<Shape *> shapes;
+	
+	Scene();
+	Scene(const std::vector<Shape *> & shapes) {
+		this->shapes = shapes;
+	}
 	
 	public:
 		
@@ -102,9 +93,22 @@ class Scene{
 			
 			this->vector<Shapes> = shapes;
 		}
-		Intersection intersects(Ray ray){
+		bool intersects(const Ray & ray, Intersection & intersection) {
+		for (int i = 0; i < shapes.size(); i++) {
+			Shape * shape = shapes[i];
 			
+			Intersection temp;
+			shape->intersects(ray, temp);
+			
+			if (temp.hit && temp.distance < intersection.distance) {
+				intersection.hit = temp.hit;
+				intersection.distance = temp.distance;
+				intersection.index = i;
+			}
 		}
+		
+		return intersection.hit;
+	}
 };
 
 class Ray{
@@ -116,14 +120,14 @@ class Ray{
 		Ray(){
 			
 		}
-		Ray::Ray(Vector3 origin, Vector3 direction){
+		Ray(const Vector3 & origin, const Vector3 & direction){
 			
 			this->origin = origin;
 			this->direction = direction;
 		}
 		Vector3 point(float distance){
 			
-			return distance;
+			return origin + direction*distance;
 		}
 };
 
@@ -143,8 +147,9 @@ class ShaderGlobals{
 		
 		ShaderGlobals(){
 		}
-		ShaderGlobals::ShaderGlobals(Vector3 point, Vector3 normal, Vector2 uv, Vector3 tangentU, Vector3 tangentV, Vector3 viewDirection, 
-		Vector3 lightDirection, Vector3 lightPoint, Vector3 lightNormal){
+		ShaderGlobals(const Vector3 & point, const Vector3 & normal, const Vector2 & uv, const Vector3 & tangentU, 
+		const Vector3 & tangentV, const Vector3 & viewDirection, 
+		const Vector3 & lightDirection, const Vector3 & lightPoint, const Vector3 & lightNormal){
 			
 			this->point = point;
 			this->normal = normal;
@@ -167,13 +172,91 @@ class Sphere : public Shape{
 		
 		Sphere(){
 		}
-		Sphere::Sphere(Vector3 position, float radius, BSDF bsdf){
+		Sphere(Vector3 position, float radius, BSDF bsdf){
 			this->position = position;
 			this->radius = radius;
 			
 		}
+	
+	virtual bool intersects(const Ray & ray, Intersection & intersection){
+		
+		Vector3 l = position - ray.origin;
+		float t = l.dot(ray.direction);
+		
+		if (t < 0)
+			return false;
+			
+		float d2 = l.dot(l) - t * t;
+		float r2 = radius * radius;
+		
+		if (d2 > r2)
+			return false;
+		
+		float dt = std::sqrt(r2 - d2);
+		
+		float t0 = t - dt;
+		float t1 = t + dt;
+		
+		if (t0 > t1)
+			std::swap(t0, t1);
+		
+		if (t0 < 0) {
+			t0 = t1;
+			
+			if (t0 < 0)
+				return false;
+		}
+		
+		intersection.hit = true;
+		intersection.distance = t0;
+		
+		return true;
+	}
+	virtual void calculateShaderGlobals(
+			const Ray & ray, const Intersection & intersection,
+			ShaderGlobals & shaderGlobals) {
+		shaderGlobals.point = ray.point(intersection.distance);
+		shaderGlobals.normal = (shaderGlobals.point - position).normalize();
+		
+		float theta = std::atan2(shaderGlobals.normal.x, shaderGlobals.normal.z);
+		float phi = std::acos(shaderGlobals.normal.y);
+		
+		shaderGlobals.uv.x = theta * AURORA_INV_PI * 0.5;
+		shaderGlobals.uv.y = phi * AURORA_INV_PI;
+		
+		shaderGlobals.tangentU.x = std::cos(theta);
+		shaderGlobals.tangentU.y = 0;
+		shaderGlobals.tangentU.z = -std::sin(theta);
+		
+		shaderGlobals.tangentV.x = std::sin(theta) * std::cos(phi);
+		shaderGlobals.tangentV.y = -std::sin(phi);
+		shaderGlobals.tangentV.z = std::cos(theta) * std::cos(phi);
+	}
+	virtual float surfaceArea() {
+		return 4.0 * AURORA_PI * radius * radius;
+	}
 };
 
 int main(int argc, char ** argv) {
+	BSDF * bsdf = new BSDF(BSDFType::Diffuse, Color3(1.0, 1.0, 1.0));
+	Shape * shape = new Sphere(Vector3(0, 0, 0), 1.0, bsdf);
+	
+	std::vector<Shape *> shapes;
+	shapes.push_back(shape);
+	
+	Scene scene(shapes);
+	
+	Ray ray(Vector3(0, 0, 10.0), Vector3(0, 0, -1.0));
+	Intersection intersection;
+	
+	scene.intersects(ray, intersection);
+	
+	std::cout << "Hit: " << intersection.hit << std::endl;
+	std::cout << "Distance: " << intersection.distance << std::endl;
+	std::cout << "Index: " << intersection.index << std::endl;
+	
+	delete bsdf;
+	delete shape;
+	
 	return 0;
 }
