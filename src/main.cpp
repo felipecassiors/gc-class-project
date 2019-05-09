@@ -12,7 +12,6 @@ using namespace aurora;
 class Shape
 {
 	
-	 
 	public:
 		Intersection* intersection;	
 		intersection = new Intersection();
@@ -30,6 +29,64 @@ class Shape
 		virtual float surfaceArea() = 0;
 		
 			
+};
+
+class Film{
+	
+	public:
+		float width;
+		float height;
+		Film(){
+		}
+		Film(float width, float height){
+			this->width = width;
+			this->height = height;
+		}
+		float aspectRatio(){
+			return width/height;
+		}
+};
+
+class Camera{
+
+	public:
+		Film* film;
+		float fieldOfView;
+		Matrix4 worldMatrix;
+		Camera(){
+		}
+		Camera(float fieldOfView, Film & film, Matrix4 worldOfMatrix){
+			this->fieldOfView = fieldOfView;
+			this->film = film;
+			this->worldOfMatrix = worldOfMatrix;
+		}
+		void lookAt(Vector3 & position, Vector3 & target, Vector3 & up){
+			Vector3 W = position - target;
+			W = W / W.length();
+			
+			Vector3 U = up.cross(W);
+			U = U / U.length();
+			
+			Vector3 V = W.cross(U);
+			
+			// missing create the matrix
+		}
+		
+		Ray generate(float x, float y, Vector2 & sample){
+			
+			float d = tan(fieldOfView/2);
+			Xc= film.aspectRatio()*d*x;
+			Yc=d*y;
+			Zc=-1;
+			
+			Vector3 Pc = new Vector3(Xc,Yc,Zc);
+			Vector3 Pl = Pc*worldMatrix;  // draft, will probably not work
+ 			Vector3 P = new Vector3(worldMatrix[3][0],worldMatrix[3][1],worldMatrix[3][2] );
+			Vector3 D = Pl - P;
+			D = D/D.length();
+			
+			return new Ray(P,D);
+		}
 };
 
 class BSDF{
