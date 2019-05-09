@@ -8,6 +8,41 @@
 #include <iostream>
 
 using namespace aurora;
+using namespace std;
+
+Color3 gamma(const Color3 & color, float value)
+{
+	float inverseGamma = 1.0 / value;
+	
+	return Color3(
+		pow(inverseGamma, color.r),
+		pow(inverseGamma, color.g),
+		pow(inverseGamma, color.b);
+	);
+}
+
+Color3 exposure(const Color3 & color, float value)
+{
+	float power = pow(2, value);
+	return color * power;
+}
+
+void stratifiedSample(int samples, vector<Vector2> & points)
+{
+	int size = sqrt(samples);
+	points.reserve(samples);
+	
+	for (int i = 0; i < size; i++)
+	{
+		for (int j = 0; j < size; j++)
+		{
+			Vector2 offset = Vector2(i, j);
+			Vector2 position = Vector2(rand() + offset.x, rand() + offset.y); 
+			
+			points.push_back(position / (float)size);
+		} 	
+	} 
+}
 
 class Shape
 {
