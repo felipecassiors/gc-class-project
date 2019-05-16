@@ -1,48 +1,48 @@
 #include <aurora/Math.h>
+#include <aurora/Utility.h>
 #include <aurora/Vector.h>
 #include <aurora/Color.h>
+#include <aurora/Matrix.h>
+#include <aurora/Image.h>
 
 #include <vector>
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <cstdlib>
 
 using namespace aurora;
 using namespace std;
 
-Color3 gamma(const Color3 & color, float value)
-{
-	float inverseGamma = 1.0 / value;
-	
-	return Color3(
-		pow(inverseGamma, color.r),
-		pow(inverseGamma, color.g),
-		pow(inverseGamma, color.b);
-	);
+float uniformRandom1D(){
+	return rand()/(RAND_MAX + 1.0);
 }
 
-Color3 exposure(const Color3 & color, float value)
-{
-	float power = pow(2, value);
-	return color * power;
+Vector2 uniformRandom2D(){
+	return Vector2(uniformRandom1D(), uniformRandom1D());
 }
 
-void stratifiedSample(int samples, vector<Vector2> & points)
-{
-	int size = sqrt(samples);
-	points.reserve(samples);
+void stratifiedSamples(int count, vector<Vector2> & samples){
+	samples.resize(count);
 	
-	for (int i = 0; i < size; i++)
-	{
-		for (int j = 0; j < size; j++)
-		{
-			Vector2 offset = Vector2(i, j);
-			Vector2 position = Vector2(rand() + offset.x, rand() + offset.y); 
-			
-			points.push_back(position / (float)size);
-		} 	
-	} 
+	int size = sqrt(count);
+	float inverseSize = 1.0 / size;
+	
+	for(int i = 0; i<count; i++){
+		Vector2 offset(i/size, i%size);
+		samples[i] = (offset + uniformRandom2D())* inverseSize;
+	}
 }
+
+float gaussian1D(float sample, float width){
+	float radius = width / 2;
+	return fmax(0, exp(-sample * sample) - exp(-radius * radius));
+}
+
+float gaussian2D(Vector2 & sample, float width){
+	return gaussian1D(sample.x, width) * gaussian1D(sample.y, width);
+}
+
 
 class Shape
 {
@@ -125,15 +125,15 @@ public:
 		worldMatrix[2][2] = W.z;
 	}
 
-	Ray generate(float x, float y, Vector2 &sample)
+	Ray generateRay(float x, float y, Vector2 &sample) const
 	{
 
-		float d = tan(fieldOfView / 2);
+		float scale = tan(fieldOfView / 2);
 
 		Vector3 Pc = new Vector3();
-		Pc.x = film.aspectRatio() * d * x;
-		Pc.y = d * y;
-		Pc.z = -1;
+		Pc.x = (2.0 * (x + sample.x + 0.5)/ film.width - 1.0-) * scale * film.aspectratio();
+		Pc.y = (1.0 - 2.0 * (y+sample.y + 0.5) / film.height) * scale;
+		Pc.z = -1.0;
 
 		Vector3 Pl = Pc * worldMatrix;
 		Vector3 P = new Vector3(worldMatrix[3][0], worldMatrix[3][1], worldMatrix[3][2]);
@@ -167,6 +167,94 @@ enum BSDFType {
 	int Diffuse = 1;
 	int Specular = 2;
 	int None = 3;
+};
+
+class RenderOptions{
+	public:
+	
+	int width;
+	int height;
+	int maximumDepth;
+	int cameraSamples;
+	int lightSamples;
+	int diffuseSamples;
+	float filterWidth;
+	float gamma;
+	float exposure;
+	
+	RenderOptions(){}
+	RenderOptions(int width, int height, int maximumDepth, int cameraSamples, int lightSamples, int diffuseSamples, float filterWidth, float gamma, float exposure){
+		this->width width;
+		this->height = height;
+		this->maximumDepth = maximumDepth;
+		this->cameraSamples =  cameraSamples;
+		this->lightSamples = lightSamples;
+		this->diffuseSamples = diffuseSamples;
+		this->filterWidth = filterWidth;
+		this->gamma = gamma;
+		this->exposure = exposure;
+	}
+	
+};
+
+class Renderer{
+	
+	public:
+	RenderOptions * options;
+	Camera * camera;
+	Scene * scene;
+	Renderer(){}
+	Renderer(RenderOptions * options, Camera * camera, Scene * scene){
+		this->options = options;
+		this->camera = camera;
+		this->scene = scene;
+	}
+	Color3 computeDirectIllumination(const BSDF & bsdf; shaderGlobals & shaderGlobals) const{
+		
+		return Color3();
+	}
+	Color3 computeIndirectIllumination(BSDF & bsdf; shaderGlobals & shaderGlobals, int depth){
+	
+		return Color3();
+	}
+	Color3 trace(const Ray & ray, int depth){
+		
+		Intersection intersection;
+		if(scene->intersects(ray, intersection)) return Color3(1.0, 1.0, 1.0);
+		
+		return Color3;
+		
+		
+	}
+	void render(Image3 * image)const{
+		
+		const Vector2 half(0.5, 0.5);
+		
+		for(int i = 0; i < options->width; i++){
+			for(int j = 0; j < options->height; j++){
+				vector<Vector2> samples;
+				stratifiedSamples(options->cameraSamples, samples);
+				
+				Color3 color;
+				float weight = 0;
+				
+				for(int k=0; k<options->cameraSamples; k++){
+					Vector2 sample = samples[k] - half) * options->filterWidth;
+					Ray ray = camera->generateRay(i, j, sample);
+					
+					float w = gaussian2D(sample, options->filterWidth);
+					
+					color += trace(ray, 0) * w;
+					weight += w;
+				}
+				
+				color /= weight;
+				color.applyExposure();
+				color.applyGamma();
+			}
+		}
+	}
+
 };
 
 class Intersection
@@ -369,6 +457,10 @@ public:
 
 int main(int argc, char **argv)
 {
+	RenderOptions options(500, 250, 1, 4, 1, 1, 2.0, 2.2, 0);
+	
+		
+	Renderer Renderer(&options, &camera, &scene);
 	BSDF *bsdf = new BSDF(BSDFType::Diffuse, Color3(1.0, 1.0, 1.0));
 	Shape *shape = new Sphere(Vector3(0, 0, 0), 1.0, bsdf);
 
