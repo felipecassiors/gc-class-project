@@ -401,7 +401,7 @@ struct Renderer {
 
 int main(int argc, char **argv)
 {
-	RenderOptions options(500, 250, 1, 4, 1, 1, 2.0, 2.2, 0);
+	RenderOptions options(500, 250, 1, 16, 1, 1, 2.0, 2.2, 0);
 	
 	Film film(options.width, options.height);
 	
@@ -411,7 +411,7 @@ int main(int argc, char **argv)
 	BSDF * whiteDiffuse = new BSDF(BSDFType::Diffuse, Color3(1.0, 1.0, 1.0));
 	BSDF * redDiffuse = new BSDF(BSDFType::Diffuse, Color3(1.0, 0, 0));	
 	BSDF * greenDiffuse = new BSDF(BSDFType::Diffuse, Color3(0, 1.0, 0));		
-	BSDF * lightMaterial = new BSDF(BSDFType::Diffuse, Color3(0, 0, 1.0));		
+	BSDF * lightMaterial = new BSDF(BSDFType::Diffuse, Color3(1.0, 1.0, 1.0));		
 	
 	Shape * left = new Sphere(Vector3(-1.0e5 - 5.0, 0, 0), 1.0e5, redDiffuse);
 	Shape * right = new Sphere(Vector3(1.0e5 + 5.0, 0, 0), 1.0e5, greenDiffuse);
