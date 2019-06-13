@@ -8,13 +8,13 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
-#include <cstdlib>
 #include <iostream>
 
 using namespace aurora;
+using namespace std;
 
 float uniformRandom1D() {
-    return std::rand() / (RAND_MAX + 1.0);
+    return uniformRandom();
 }
 Vector2 uniformRandom2D() {
     return Vector2(uniformRandom1D(), uniformRandom1D());
@@ -134,6 +134,8 @@ struct Shape {
             const Ray & ray, const Intersection & intersection,
             ShaderGlobals & shaderGlobals) const = 0;
     virtual float surfaceArea() const = 0;
+    
+    virtual Vector3 lightPosition() const = 0;
 };
 
 struct Sphere : Shape {
@@ -204,6 +206,10 @@ struct Sphere : Shape {
     virtual float surfaceArea() const {
         return 4.0 * AURORA_PI * radius * radius;
     }
+    
+    virtual Vector3 lightPosition() const{
+		return position;
+	}
 };
 
 struct Scene {
@@ -341,28 +347,69 @@ struct Renderer {
         this->scene = scene;
     }
     
-    Color3 computeDirectIllumination(
-            const BSDF & bsdf, ShaderGlobals & shaderGlobals) const {
-        return Color3();
+    Color3 computeDirectIllumination(const BSDF * bsdf, ShaderGlobals & shaderGlobals) const {
+    	Color3 radiance;
+    	
+    	for(int i=0; i<scene->shapes.size(); i++){
+			Shape * lightShape = scene->shapes[i];
+			BSDF * lightBSDF = lightShape->bsdf;
+			
+			if(lightBSDF->type == BSDFType::Light){
+				
+				shaderGlobals.lightDirection = lightShape->lightPosition() - shaderGlobals.point;
+				
+				float inverseSquareDistance = 1.0 / shaderGlobals.lightDirection.dot(shaderGlobals.lightDirection);
+				shaderGlobals.lightDirection *= sqrt(inverseSquareDistance);
+				
+				Ray shadowRay(
+					shaderGlobals.point + shaderGlobals.lightDirection * AURORA_THRESHOLD,
+					shaderGlobals.lightDirection);
+				
+				Intersection intersection;
+				
+				if(scene->intersects(shadowRay, intersection) && i == intersection.index){
+					
+					ShaderGlobals lightShaderGlobals;
+					lightShape->calculateShaderGlobals(shadowRay, intersection, lightShaderGlobals);
+					
+					shaderGlobals.lightPoint = lightShaderGlobals.point;
+					shaderGlobals.lightNormal = lightShaderGlobals.normal;
+					
+					float cosine = fmax(0, shaderGlobals.normal.dot(shaderGlobals.lightDirection));
+					float lightCosine = fmax(0, shaderGlobals.lightNormal.dot(-shaderGlobals.lightDirection));
+					
+					Color3 bsdfColor = bsdf->color * AURORA_INV_PI;
+					Color3 lightIntensity = lightBSDF->color * lightCosine * inverseSquareDistance * lightShape->surfaceArea();
+					
+					radiance += bsdfColor * lightIntensity * cosine;
+				
+				}
+			
+			}	
+		
+		}
+        return radiance;
     }
-    Color3 computeIndirectIllumination(
-            const BSDF & bsdf, ShaderGlobals & shaderGlobals) const {
+    Color3 computeIndirectIllumination(const BSDF * bsdf, ShaderGlobals & shaderGlobals) const {
+    	
         return Color3();
     }
     
     Color3 trace(const Ray & ray, int depth) const {
         Intersection intersection;
         
-       	if (scene->intersects(ray, intersection)) {
+        if (scene->intersects(ray, intersection)) {
             const Shape * shape = scene->shapes[intersection.index];
             const BSDF * bsdf = shape->bsdf;
             
-            ShaderGlobals shaderGlobals;
-            shape->calculateShaderGlobals(ray, intersection, shaderGlobals);
-            
-            float cosTheta = shaderGlobals.viewDirection.dot(shaderGlobals.normal);
-            
-            return bsdf->color * cosTheta;
+            if (bsdf->type == BSDFType::Light)
+                return bsdf->color;
+            else if (bsdf->type == BSDFType::Diffuse) {
+                ShaderGlobals shaderGlobals;
+                shape->calculateShaderGlobals(ray, intersection, shaderGlobals);
+                
+                return computeDirectIllumination(bsdf, shaderGlobals);
+            }
         }
         
         return Color3();
@@ -401,7 +448,7 @@ struct Renderer {
 
 int main(int argc, char **argv)
 {
-	RenderOptions options(500, 250, 1, 16, 1, 1, 2.0, 2.2, 0);
+	RenderOptions options(500, 500, 1, 16, 1, 1, 2.0, 2.2, 0);
 	
 	Film film(options.width, options.height);
 	
@@ -411,7 +458,7 @@ int main(int argc, char **argv)
 	BSDF * whiteDiffuse = new BSDF(BSDFType::Diffuse, Color3(1.0, 1.0, 1.0));
 	BSDF * redDiffuse = new BSDF(BSDFType::Diffuse, Color3(1.0, 0, 0));	
 	BSDF * greenDiffuse = new BSDF(BSDFType::Diffuse, Color3(0, 1.0, 0));		
-	BSDF * lightMaterial = new BSDF(BSDFType::Diffuse, Color3(1.0, 1.0, 1.0));		
+	BSDF * lightMaterial = new BSDF(BSDFType::Light, Color3(1.0, 1.0, 1.0) * 10.0);		
 	
 	Shape * left = new Sphere(Vector3(-1.0e5 - 5.0, 0, 0), 1.0e5, redDiffuse);
 	Shape * right = new Sphere(Vector3(1.0e5 + 5.0, 0, 0), 1.0e5, greenDiffuse);
@@ -439,9 +486,9 @@ int main(int argc, char **argv)
 	renderer.render(image);
 	
 	if (writeImage("output.ppm", image))
-        std::cout << "Success." << std::endl;
+        cout << "Success." << endl;
     else
-        std::cout << "Failure." << std::endl;
+        cout << "Failure." << endl;
     
     delete whiteDiffuse;
     delete redDiffuse;
